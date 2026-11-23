@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд рекламы 2026</title>
+    <!-- Подключаем библиотеку для графиков -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f6fa;
+            --card-bg: #ffffff;
+            --text-main: #1a202c;
+            --text-muted: #718096;
+            --border-color: #e2e8f0;
+            --color-rsya: #3182ce;
+            --color-avito: #dd6b20;
+            --color-telegram: #38a169;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            margin: 0 0 5px 0;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+
+        .card h3 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .canvas-container {
+            position: relative;
+            height: 320px;
+            width: 100%;
+        }
+
+        /* Таблица */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 15px;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: right;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th:first-child, td:first-child {
+            text-align: left;
+            font-weight: 600;
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: var(--text-muted);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .channel-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Лоадер и ошибки */
+        .loader {
+            text-align: center;
+            padding: 50px;
+            font-size: 18px;
+            color: var(--text-muted);
+            grid-column: 1 / -1;
+        }
+
+        .error-msg {
+            color: #e53e3e;
+            background: #fff5f5;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #feb2b2;
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 768px) {
+            .grid-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Аналитика рекламы 2026</h1>
+        <p>Сравнение эффективности каналов: РСЯ · Авито · Телеграм</p>
+    </div>
+
+    <div id="loader" class="loader">Загрузка данных из Google Таблицы...</div>
+
+    <div class="grid-container" id="dashboard" style="display: none;">
+        
+        <div class="card full-width">
+            <h3>Бюджет по каналам (₽)</h3>
+            <div class="canvas-container">
+                <canvas id="budgetChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Количество заявок</h3>
+            <div class="canvas-container">
+                <canvas id="leadsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Квалифицированные заявки</h3>
+            <div class="canvas-container">
+                <canvas id="qualChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card full-width">
+            <h3>Сумма продаж с рекламы (₽)</h3>
+            <div class="canvas-container">
+                <canvas id="salesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card full-width">
+            <h3>Сводная таблица за всё время</h3>
+            <div id="summaryTable"></div>
+        </div>
+
+    </div>
+
+    <script>
+        // Ваш URL веб-приложения из Google Apps Script
+        const API_URL = 'https://script.google.com/macros/s/AKfycbzziGB6rFKw36FiHFey8fdcXeRAwVZkJRNWGMRIsAFhdIY-kZm616NZoUvW-5VcHEZfQw/exec';
+
+        const COLORS = { 
+            rsya: '#3182ce', 
+            avito: '#dd6b20', 
+            telegram: '#38a169' 
+        };
+        const CHANNEL_NAMES = { 
+            rsya: 'РСЯ', 
+            avito: 'Авито', 
+            telegram: 'Телеграм' 
+        };
+
+        // Вспомогательная функция для выравнивания месяцев
+        function alignData(channelData, key, allMonths) {
+            const channelMonths = channelData.months;
+            const dataArray = channelData.data[key] || [];
+            
+            return allMonths.map(month => {
+                const idx = channelMonths.indexOf(month);
+                return idx !== -1 ? dataArray[idx] : null;
+            });
+        }
+
+        // Форматирование чисел для таблицы
+        const formatMoney = (num) => num.toLocaleString('ru-RU') + ' ₽';
+        const formatNum = (num) => num.toLocaleString('ru-RU');
+
+        async function loadDashboard() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Ошибка сети при запросе к скрипту');
+                
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error);
+
+                // Скрываем лоадер, показываем дашборд
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'grid';
+
+                // Собираем все месяцы в один массив без дублей (для правильной оси X)
+                const allMonths = [...new Set([...data.rsya.months, ...data.avito.months, ...data.telegram.months])];
+
+                // Общие настройки для всех графиков
+                const commonOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 8 } },
+                        tooltip: { padding: 10, cornerRadius: 8 }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#edf2f7' } },
+                        x: { grid: { display: false } }
+                    }
+                };
+
+                // 1. График Бюджета (Столбчатый)
+                new Chart(document.getElementById('budgetChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: allMonths,
+                        datasets: ['rsya', 'avito', 'telegram'].map(ch => ({
+                            label: CHANNEL_NAMES[ch],
+                            data: alignData(data[ch], 'бюджет', allMonths),
+                            backgroundColor: COLORS[ch],
+                            borderRadius: 4,
+                            barPercentage: 0.7
+                        }))
+                    },
+                    options: commonOptions
+                });
+
+                // 2. График Заявок (Линейный)
+                new Chart(document.getElementById('leadsChart'), {
+                    type: 'line',
+                    data: {
+                        labels: allMonths,
+                        datasets: ['rsya', 'avito', 'telegram'].map(ch => ({
+                            label: CHANNEL_NAMES[ch],
+                            data: alignData(data[ch], 'заявки', allMonths),
+                            borderColor: COLORS[ch],
+                            backgroundColor: COLORS[ch],
+                            borderWidth: 3,
+                            tension: 0.4, // Плавные линии
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }))
+                    },
+                    options: commonOptions
+                });
+
+                // 3. График Квал. заявок (Линейный)
+                new Chart(document.getElementById('qualChart'), {
+                    type: 'line',
+                    data: {
+                        labels: allMonths,
+                        datasets: ['rsya', 'avito', 'telegram'].map(ch => ({
+                            label: CHANNEL_NAMES[ch],
+                            data: alignData(data[ch], 'квал. заявки', allMonths),
+                            borderColor: COLORS[ch],
+                            backgroundColor: COLORS[ch],
+                            borderWidth: 3,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }))
+                    },
+                    options: commonOptions
+                });
+
+                // 4. График Продаж (Столбчатый)
+                new Chart(document.getElementById('salesChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: allMonths,
+                        datasets: ['rsya', 'avito', 'telegram'].map(ch => ({
+                            label: CHANNEL_NAMES[ch],
+                            data: alignData(data[ch], 'сумма продаж', allMonths),
+                            backgroundColor: COLORS[ch],
+                            borderRadius: 4,
+                            barPercentage: 0.7
+                        }))
+                    },
+                    options: commonOptions
+                });
+
+                // 5. Отрисовка таблицы
+                renderSummaryTable(data);
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('loader').innerHTML = `
+                    <div class="error-msg">
+                        <strong>Не удалось загрузить данные.</strong><br>
+                        Причина: ${error.message}<br><br>
+                        <em>Если вы открываете файл локально (двойным кликом), браузер может блокировать запросы к Google. Попробуйте открыть файл через локальный сервер или загрузить на GitHub Pages.</em>
+                    </div>
+                `;
+            }
+        }
+
+        function renderSummaryTable(data) {
+            const channels = ['rsya', 'avito', 'telegram'];
+            
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Канал</th>
+                            <th>Бюджет</th>
+                            <th>Заявки (шт)</th>
+                            <th>Квал. заявки (шт)</th>
+                            <th>Продажи (шт)</th>
+                            <th>Выручка</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            channels.forEach(ch => {
+                const d = data[ch].data;
+                // Считаем сумму, игнорируя null и пустые значения
+                const sum = arr => arr ? arr.reduce((acc, val) => acc + (val || 0), 0) : 0;
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="channel-name">
+                                <span class="dot" style="background-color: ${COLORS[ch]}"></span>
+                                ${CHANNEL_NAMES[ch]}
+                            </div>
+                        </td>
+                        <td>${formatMoney(sum(d['бюджет']))}</td>
+                        <td>${formatNum(sum(d['заявки']))}</td>
+                        <td>${formatNum(sum(d['квал. заявки']))}</td>
+                        <td>${formatNum(sum(d['продажи']))}</td>
+                        <td><strong>${formatMoney(sum(d['сумма продаж']))}</strong></td>
+                    </tr>
+                `;
+            });
+            
+            html += `</tbody></table>`;
+            document.getElementById('summaryTable').innerHTML = html;
+        }
+
+        // Запуск
+        loadDashboard();
+    </script>
+</body>
+</html>
